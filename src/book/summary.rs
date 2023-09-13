@@ -335,15 +335,14 @@ impl<'a> SummaryParser<'a> {
 
     /// Finishes parsing a link once the `Event::Start(Tag::Link(..))` has been opened.
     fn parse_link(&mut self, href: String) -> Link {
-        let href = href.replace("%20", " ");
+        let path = urlencoding::decode(&href);
         let link_content = collect_events!(self.stream, end Tag::Link(..));
         let name = stringify_events(link_content);
 
-        let path = if href.is_empty() {
-            None
-        } else {
-            Some(PathBuf::from(href))
-        };
+        let path = path
+            .ok()
+            .filter(|p| !p.is_empty())
+            .map(|p| PathBuf::from(p.into_owned()));
 
         Link {
             name,
@@ -985,6 +984,31 @@ mod tests {
             SummaryItem::Link(Link {
                 name: String::from("test2"),
                 location: Some(PathBuf::from("./test link2.md")),
+                number: Some(SectionNumber(vec![2])),
+                nested_items: Vec::new(),
+            }),
+        ];
+        let mut parser = SummaryParser::new(src);
+        let got = parser
+            .parse_numbered(&mut 0, &mut SectionNumber::default())
+            .unwrap();
+
+        assert_eq!(got, should_be);
+    }
+
+    #[test]
+    fn allow_unicode_in_link_destination() {
+        let src = "- [test1](./test%F0%9F%92%9Clink1.md)\n- [test2](<./test💜link2.md>)";
+        let should_be = vec![
+            SummaryItem::Link(Link {
+                name: String::from("test1"),
+                location: Some(PathBuf::from("./test💜link1.md")),
+                number: Some(SectionNumber(vec![1])),
+                nested_items: Vec::new(),
+            }),
+            SummaryItem::Link(Link {
+                name: String::from("test2"),
+                location: Some(PathBuf::from("./test💜link2.md")),
                 number: Some(SectionNumber(vec![2])),
                 nested_items: Vec::new(),
             }),
